@@ -108,19 +108,34 @@ export const EditDetails = async (req: UserRequest, res: Response) => {
 export const EditPassword = async (req: UserRequest, res: Response) => {
   try {
     const createrId = req.userId;
+    const { newPassword, oldPassword } = req.body;
+
     if (!createrId) {
-      res.status(401).json({ message: `Can't get your details.Please login!` });
+      res.status(401).json({ message: "Unauthorized. Please login." });
       return;
     }
-    const { password } = req.body;
-    const authPassword = await client.user.update({
+
+    const user = await client.user.findFirst({ where: { id: createrId } });
+    if (!user) {
+      res.status(404).json({ message: "User not found." });
+      return;
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      res.status(403).json({ message: "Wrong current password." });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await client.user.update({
       where: { id: createrId },
-      data: { password },
+      data: { password: hashedPassword },
     });
-    res.status(200).json({
-      message: "Password updated successfully",
-      data: authPassword,
-    });
+
+    res.status(200).json({ message: "Password updated successfully." });
+    return;
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Something went wrong" });
