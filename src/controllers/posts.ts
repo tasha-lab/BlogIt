@@ -1,21 +1,55 @@
 import { Posts } from "@prisma/client";
 import { Request, Response } from "express";
 import client from "../config/prismaclient";
+import imagekit from "../config/imagekit";
+import fs from "fs";
 
 interface UserRequest extends Request {
   userId?: string;
+  file?: Express.Multer.File;
 }
 export const CreatePost = async (req: UserRequest, res: Response) => {
   try {
-    const { title, postImage, synopsis, content }: Posts = req.body;
+    const { title, synopsis, content } = req.body;
     const createrId = req.userId;
+    const imageFile = req.file;
+
+    if (!imageFile) {
+      res.status(400).json({ message: "Image file is required" });
+      return;
+    }
+
+    const fileBuffer = fs.readFileSync(imageFile.path);
+    const response = await imagekit.upload({
+      file: fileBuffer,
+      fileName: `tasha/${Date.now()}`,
+      folder: "/blogs",
+    });
+
+    fs.unlinkSync(imageFile.path);
+
+    const imageURL = imagekit.url({
+      path: response.filePath,
+      transformation: [
+        { width: "1280" },
+        { quality: "auto" },
+        { format: "webp" },
+      ],
+    });
+
     if (!createrId) {
-      res.status(401).json({ message: `Can't Create post.Please login!` });
+      res.status(401).json({ message: `Can't create post. Please login!` });
       return;
     }
 
     const post = await client.posts.create({
-      data: { title, postImage, synopsis, content, userId: createrId },
+      data: {
+        title,
+        postImage: imageURL,
+        synopsis,
+        content,
+        userId: createrId,
+      },
     });
 
     res.status(201).json({
@@ -24,7 +58,9 @@ export const CreatePost = async (req: UserRequest, res: Response) => {
     });
     return;
   } catch (error) {
+    console.log("CreatePost Error:", error);
     res.status(500).json({ message: "something went wrong" });
+    return;
   }
 };
 
